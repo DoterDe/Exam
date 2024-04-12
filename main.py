@@ -1,6 +1,7 @@
 import sqlite3
 from tabulate import tabulate
-
+import time
+import re
 connecting = sqlite3.connect('database.db')
 
 cursor = connecting.cursor()
@@ -64,8 +65,8 @@ class Moviemanager:
     def choice_movie(self):
         self.db_manager.choice_move_read()
         self.choice_move = int(input('Choice film: '))
+        self.name_film = self.db_manager.choice_move(self.choice_move)
 
-        self.db_manager.choice_move(self.choice_move)
     def get_choice_move(self):
         return self.choice_move
 
@@ -86,6 +87,7 @@ class Cinemachoice:
         self.db_manager = DatabaseManager(db_name)
         self.choice_cinema = None
         self.choice_move = None
+        self.pay = None
 
         
 
@@ -123,12 +125,25 @@ class Cinemachoice:
                     else:
                         if self.ticket < 101:
                             
-                            self.db_man = DatabaseManager('database.db')
-                            self.db_man.show_choice_place()
-                            name_film = self.db_man.get_name_film()
-                            self.choice_place  = int(input('Next choice where you want seat , pleace give afisha_id : '))
-                            self.db_man.choice_place(self.choice_place)
-                            self.db_man.give_ticket(name_film , 1293, 'dsfsgr' , 12 , '2024-04-21' , 1200 , self.ticket)
+                            self.db_manager.show_choice_place()
+                            self.db_manager.choice_move(self.choice_cinema)
+                            name_film = self.db_manager.film_name
+                            choice_place  = int(input('Next choice where you want seat , pleace give afisha_id : '))
+                            self.db_manager.choice_place(choice_place)
+                            while True:
+                                try:
+                                    self.pay = input('Now , need paying for ticket pleace enter your number in format (+7-***-***-**-**) : ')
+
+
+                                except (ValueError, TypeError):
+                                    print('Only in format (+7-***-***-**-**) ')
+
+                                if  re.match(r"[+][7]-[\d]{3}-[\d]{3}-[\d]{2}-[\d]{2}", self.pay) :
+                                        self.db_manager.chek_phone(self.pay)
+                                        break
+                                else:
+                                    print('You can enter only in format (+7-***-***-**-**)')
+                            self.db_manager.give_ticket(name_film , self.pay, f'{self.db_manager.address}' , self.db_manager.place_id , self.db_manager.lists1 , 'тут прайс' , self.ticket)
 
                         else:
                             print('I say  enter only catergory num ')
@@ -152,6 +167,11 @@ class DatabaseManager:
         self.db = sqlite3.connect(db_name)
         self.cursor = self.db.cursor()
         self.response = None
+        self.film = None
+        self.address =None
+        self.place_id = None
+        self.lists1 = None
+        self.lists2 = None
 
 
     def choice_cinema_read(self):
@@ -172,8 +192,16 @@ class DatabaseManager:
         self.cursor.execute(adress)
         adress = self.cursor.fetchall()
         adress = ', '.join([row[0] for row in adress])
+        query = f'INSERT INTO orders (address) VALUES ("{adress}")'
+        self.cursor.execute(query)
         self.db.commit()
         print(f'You choice cinema with name {name} and with adress {adress}')
+        self.address = adress
+        query = f'DELETE from orders '
+        self.cursor.execute(query)
+        self.db.commit()
+
+    
 
     def choice_move_read(self):
         query = 'SELECT * FROM movie'
@@ -192,15 +220,18 @@ class DatabaseManager:
         head = ['num','name' , 'ganer' ,'year' , 'description' ,'rating']
         tab = tabulate(lists, headers=head, numalign='left' ,stralign="center",tablefmt="fancy_grid")
         print(tab)
+
     def choice_move(self, id_move):
         query = f'SELECT name FROM movie WHERE "ID"={id_move} '
         self.cursor.execute(query)
-        response = self.cursor.fetchall()
-        self.response = ', '.join([row[0] for row in response])
+        self.response = self.cursor.fetchall()
+        self.response = ', '.join([row[0] for row in self.response])
+        self.film_name = self.response
         print(f'You choice film with name {self.response}')
-    
+        return ', '.join([row[0] for row in self.response])
+
     def get_name_film(self):
-        return self.response
+        return self.film_name
 
     
     
@@ -209,15 +240,29 @@ class DatabaseManager:
         self.cursor.execute(query)
         response = self.cursor.fetchall()
         if response == []:
+            
             query = f'SELECT * FROM afisha WHERE movie_id = {move_id}'
+            
             self.cursor.execute(query)
             response = self.cursor.fetchall()
+            date = f'SELECT date FROM afisha WHERE movie_id = {move_id}'
+            self.cursor.execute(date)
+            response1 = self.cursor.fetchall()
+            self.lists1 = [row[0] for row in response1]
+            price = f'SELECT price FROM afisha WHERE movie_id = {move_id}'
+            self.cursor.execute(price)
+            response2 = self.cursor.fetchall()
+            self.lists2 = [row for row in response2]
             lists = [[str(rown)[:30] for rown in row] for row in response]
             head = ['num','movie_id' , 'cinema_id' ,'price' , 'date' ,'time' , 'capacity']
             tab = tabulate(lists, headers=head, numalign='left' ,stralign="center",tablefmt="fancy_grid")
             print('At the moment, these theaters do not have the movies you need, check out other options ')
             print(tab)
         else:
+            date = f'SELECT date FROM afisha WHERE movie_id = {move_id} AND cinema_id = {cinema_id}'
+            self.cursor.execute(date)
+            response1 = self.cursor.fetchall()
+            self.lists1 = [[str(rown)[:30] for rown in row] for row in response1]
             lists = [[str(rown)[:30] for rown in row] for row in response]
             head = ['num','movie_id' , 'cinema_id' ,'price' , 'date' ,'time' , 'capacity']
             tab = tabulate(lists, headers=head, numalign='left' ,stralign="center",tablefmt="fancy_grid")
@@ -234,7 +279,7 @@ class DatabaseManager:
         print(tab)
 
     def choice_place(self , afisha_id):
-        
+        self.place_id = afisha_id
         query = f'SELECT * FROM place WHERE afisha_id = {afisha_id}'
         # ticket_id = db_manager.get_ticket_id()
         # print(ticket_id)
@@ -252,16 +297,25 @@ class DatabaseManager:
         print(f'OK , you choice place with afisha id {afisha_id} \n {tab}')
 
 
-    def give_ticket(self, name_film , phone ,address ,place_id ,date , cost , ticket_id):
-        db_manager = Cinemachoice('database.db')
+    def chek_phone(self , phone):
+        print(f'you enter number {phone}')
+        print('your request is being processed . ')
+        for i in range(5):
+            time.sleep(1)
+            print('.')
+        time.sleep(5)
+        print('the payment was successful')
 
+
+
+    def give_ticket(self, name_film , phone ,address ,place_id ,date , cost , ticket_id):
         # if ticket_id is not None:
         up = f'UPDATE afisha SET capacity = capacity - 1 WHERE "ID" = {ticket_id}'
         self.cursor.execute(up)
         self.db.commit()
         # else:
 
-        query = f'INSERT INTO orders (name_film, phone, address, place_id, date, cost) VALUES ("{name_film}", "{phone}", "{address}", {place_id}, {date}, {cost}); '
+        query = f'INSERT INTO orders (name_film, phone, address, place_id, date, cost) VALUES ("{name_film}", "{phone}", "{address}", {place_id}, "{date}", {cost}); '
         self.cursor.execute(query)
         self.db.commit()
 
@@ -272,8 +326,6 @@ class DatabaseManager:
         head = ['name_film','phone' , 'address' ,'place_id' , 'date' , 'cost' ]
         tab = tabulate(lists, headers=head, numalign='left' ,stralign="center",tablefmt="fancy_grid")
         print(tab)
-
-
 
 
 
@@ -296,7 +348,6 @@ while True:
     else:
         print('You have only 3 choice')
             
-
 
 
 
